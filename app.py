@@ -66,80 +66,212 @@ st.markdown("""
 # -------------------------------------------------------
 # Database Helper & Caching
 # -------------------------------------------------------
+def create_demo_database(db_path: Path):
+    """
+    Generate a lightweight SQLite demo database if inventory.db is missing (e.g. on Streamlit Cloud).
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS vendor_invoice (
+        PONumber INTEGER,
+        VendorNumber INTEGER,
+        VendorName TEXT,
+        InvoiceDate TEXT,
+        PODate TEXT,
+        PayDate TEXT,
+        Quantity INTEGER,
+        Dollars REAL,
+        Freight REAL
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchases (
+        PONumber INTEGER,
+        VendorNumber INTEGER,
+        VendorName TEXT,
+        InvoiceDate TEXT,
+        PODate TEXT,
+        ReceivingDate TEXT,
+        Brand INTEGER,
+        Description TEXT,
+        Quantity INTEGER,
+        Dollars REAL,
+        PurchasePrice REAL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchase_prices (
+        Brand INTEGER,
+        Description TEXT,
+        Price REAL,
+        Volume REAL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS begin_inventory (
+        InventoryId TEXT,
+        Store INTEGER,
+        Brand INTEGER,
+        Description TEXT,
+        onHand INTEGER,
+        Price REAL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS end_inventory (
+        InventoryId TEXT,
+        Store INTEGER,
+        Brand INTEGER,
+        Description TEXT,
+        onHand INTEGER,
+        Price REAL
+    )
+    """)
+
+    cursor.execute("SELECT COUNT(*) FROM vendor_invoice")
+    if cursor.fetchone()[0] == 0:
+        np.random.seed(42)
+        vendors = [
+            (1001, "Diageo North America"), (1002, "Jim Beam Brands Co"),
+            (1003, "Martignetti Companies"), (1004, "Pernod Ricard USA"),
+            (1005, "Bacardi USA Inc"), (1006, "E & J Gallo Winery")
+        ]
+        
+        sample_invoices = []
+        sample_purchases = []
+        sample_prices = []
+        sample_begin = []
+        sample_end = []
+        
+        for i in range(1, 251):
+            po_num = 10000 + i
+            vendor_num, vendor_name = vendors[i % len(vendors)]
+            qty = int(np.random.randint(20, 2000))
+            dollars = round(float(qty * np.random.uniform(10.0, 150.0)), 2)
+            freight = round(float(dollars * np.random.uniform(0.004, 0.015)), 2)
+            
+            sample_invoices.append((
+                po_num, vendor_num, vendor_name,
+                "2025-01-15", "2025-01-10", "2025-02-15",
+                qty, dollars, freight
+            ))
+            
+            is_anomaly = (i % 5 == 0)
+            item_dollars = dollars + (50.0 if is_anomaly else 0.0)
+            rec_delay = 15 if is_anomaly else 5
+            
+            sample_purchases.append((
+                po_num, vendor_num, vendor_name,
+                "2025-01-15", "2025-01-10", f"2025-01-{10+rec_delay:02d}",
+                100 + i, f"Product Brand #{100+i}",
+                qty, item_dollars, round(item_dollars / qty, 2)
+            ))
+            
+        cursor.executemany("INSERT INTO vendor_invoice VALUES (?,?,?,?,?,?,?,?,?)", sample_invoices)
+        cursor.executemany("INSERT INTO purchases VALUES (?,?,?,?,?,?,?,?,?,?,?)", sample_purchases)
+        
+        for b in range(1, 51):
+            sample_prices.append((100 + b, f"Product Brand #{100+b}", round(float(np.random.uniform(10.0, 100.0)), 2), 750.0))
+            sample_begin.append((f"INV_{b}_BEG", 1, 100 + b, f"Product Brand #{100+b}", int(np.random.randint(10, 500)), round(float(np.random.uniform(10.0, 100.0)), 2)))
+            sample_end.append((f"INV_{b}_END", 1, 100 + b, f"Product Brand #{100+b}", int(np.random.randint(10, 500)), round(float(np.random.uniform(10.0, 100.0)), 2)))
+            
+        cursor.executemany("INSERT INTO purchase_prices VALUES (?,?,?,?)", sample_prices)
+        cursor.executemany("INSERT INTO begin_inventory VALUES (?,?,?,?,?,?)", sample_begin)
+        cursor.executemany("INSERT INTO end_inventory VALUES (?,?,?,?,?,?)", sample_end)
+        
+    conn.commit()
+    conn.close()
+
 @st.cache_data(ttl=3600)
 def get_db_path():
     project_root = Path(__file__).resolve().parent
     project_db = project_root / "data" / "inventory.db"
-    if project_db.exists():
+    if project_db.exists() and project_db.stat().st_size > 10000:
         return str(project_db)
     desktop_db = Path.home() / "Desktop" / "inventory.db"
-    if desktop_db.exists():
+    if desktop_db.exists() and desktop_db.stat().st_size > 10000:
         return str(desktop_db)
-    return str(project_db)
+    
+    demo_db = project_root / "data" / "demo_inventory.db"
+    if not demo_db.exists() or demo_db.stat().st_size < 1000:
+        create_demo_database(demo_db)
+    return str(demo_db)
 
 @st.cache_data(ttl=600)
 def load_overview_data():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    
-    # Vendor invoice overview
-    df_invoices = pd.read_sql_query("""
-        SELECT PONumber, VendorNumber, VendorName, Quantity, Dollars, Freight, InvoiceDate
-        FROM vendor_invoice
-    """, conn)
-    
-    # Combined purchase aggregation to calculate overall risk exposure
-    query_risk = """
-    WITH purchase_agg AS (
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        
+        df_invoices = pd.read_sql_query("""
+            SELECT PONumber, VendorNumber, VendorName, Quantity, Dollars, Freight, InvoiceDate
+            FROM vendor_invoice
+        """, conn)
+        
+        query_risk = """
+        WITH purchase_agg AS (
+            SELECT
+                p.PONumber,
+                SUM(p.Quantity) AS total_item_quantity,
+                SUM(p.Dollars) AS total_item_dollars,
+                AVG(julianday(p.ReceivingDate) - julianday(p.PODate)) AS avg_receiving_delay
+            FROM purchases p
+            GROUP BY p.PONumber
+        )
         SELECT
-            p.PONumber,
-            SUM(p.Quantity) AS total_item_quantity,
-            SUM(p.Dollars) AS total_item_dollars,
-            AVG(julianday(p.ReceivingDate) - julianday(p.PODate)) AS avg_receiving_delay
-        FROM purchases p
-        GROUP BY p.PONumber
-    )
-    SELECT
-        vi.PONumber,
-        vi.Quantity AS invoice_quantity,
-        vi.Dollars AS invoice_dollars,
-        vi.Freight,
-        pa.total_item_quantity,
-        pa.total_item_dollars,
-        pa.avg_receiving_delay
-    FROM vendor_invoice vi
-    LEFT JOIN purchase_agg pa ON vi.PONumber = pa.PONumber
-    """
-    df_risk = pd.read_sql_query(query_risk, conn)
-    conn.close()
-    
-    # Label risk
-    df_risk['is_risk'] = df_risk.apply(
-        lambda r: 1 if (pd.isna(r['total_item_dollars']) or abs(r['invoice_dollars'] - r['total_item_dollars']) > 5 or (not pd.isna(r['avg_receiving_delay']) and r['avg_receiving_delay'] > 10)) else 0,
-        axis=1
-    )
-    
-    return df_invoices, df_risk
+            vi.PONumber,
+            vi.Quantity AS invoice_quantity,
+            vi.Dollars AS invoice_dollars,
+            vi.Freight,
+            pa.total_item_quantity,
+            pa.total_item_dollars,
+            pa.avg_receiving_delay
+        FROM vendor_invoice vi
+        LEFT JOIN purchase_agg pa ON vi.PONumber = pa.PONumber
+        """
+        df_risk = pd.read_sql_query(query_risk, conn)
+        conn.close()
+        
+        df_risk['is_risk'] = df_risk.apply(
+            lambda r: 1 if (pd.isna(r['total_item_dollars']) or abs(r['invoice_dollars'] - r['total_item_dollars']) > 5 or (not pd.isna(r['avg_receiving_delay']) and r['avg_receiving_delay'] > 10)) else 0,
+            axis=1
+        )
+        return df_invoices, df_risk
+    except Exception as e:
+        return pd.DataFrame(), pd.DataFrame()
 
 @st.cache_data(ttl=600)
 def load_table_sample(table_name: str, limit: int = 500):
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    query = f"SELECT * FROM {table_name} LIMIT {limit}"
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        query = f"SELECT * FROM {table_name} LIMIT {limit}"
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=600)
 def get_table_counts():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    tables = ['vendor_invoice', 'purchases', 'purchase_prices', 'begin_inventory', 'end_inventory']
-    counts = {}
-    for t in tables:
-        counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-    conn.close()
-    return counts
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        tables = ['vendor_invoice', 'purchases', 'purchase_prices', 'begin_inventory', 'end_inventory']
+        counts = {}
+        for t in tables:
+            counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        conn.close()
+        return counts
+    except Exception as e:
+        return {}
 
 
 # -------------------------------------------------------
