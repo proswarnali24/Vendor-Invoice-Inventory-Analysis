@@ -1,3 +1,4 @@
+import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
@@ -33,7 +34,7 @@ def evaluate_model(model, X_test, y_test, model_name: str) -> dict:
     preds = model.predict(X_test)
 
     mae = mean_absolute_error(y_test, preds)
-    rmse = mean_squared_error(y_test, preds, squared=False)
+    rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
     r2 = r2_score(y_test, preds) * 100
 
     print(f"\n{model_name} Performance:")

@@ -1,5 +1,14 @@
+import sys
 import joblib
 from pathlib import Path
+
+# Add current directory and project root to sys.path
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from data_preprocessing import load_vendor_invoice_data, prepare_features, split_data
 from modeling_evaluation import (
@@ -10,12 +19,11 @@ from modeling_evaluation import (
 )
 
 def main():
-    db_path = "data/inventory.db"
-    model_dir = Path("models")
+    model_dir = project_root / "models"
     model_dir.mkdir(exist_ok=True)
 
     # Load data
-    df = load_vendor_invoice_data(db_path)
+    df = load_vendor_invoice_data()
 
     # Prepare data
     X, y = prepare_features(df)

@@ -9,11 +9,10 @@ def train_random_forest(X_train, y_train):
     )
 
     param_grid = {
-        "n_estimators": [100, 200, 300],
-        "max_depth": [None, 4, 5, 6],
-        "min_samples_split": [2, 3, 5],
-        "min_samples_leaf": [1, 2, 5],
-        "criterion": ["gini", "entropy"]
+        "n_estimators": [100, 200],
+        "max_depth": [None, 6, 10],
+        "min_samples_split": [2, 5],
+        "criterion": ["gini"]
     }
 
     scorer = make_scorer(f1_score)

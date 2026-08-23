@@ -1,13 +1,16 @@
 import joblib
 import pandas as pd
+from pathlib import Path
 
-MODEL_PATH = "models/predict_freight_model.pkl"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "predict_freight_model.pkl"
 
 
-def load_model(model_path: str = MODEL_PATH):
+def load_model(model_path=None):
     """
     Load trained freight cost prediction model.
     """
+    if model_path is None or not Path(model_path).exists():
+        model_path = DEFAULT_MODEL_PATH
     with open(model_path, "rb") as f:
         model = joblib.load(f)
     return model
@@ -34,7 +37,6 @@ if __name__ == "__main__":
     
     # Example inference run (local testing)
     sample_data = {
-        "Quantity": [1200,2830],
         "Dollars": [18500,9000]
     }
     prediction = predict_freight_cost(sample_data)
