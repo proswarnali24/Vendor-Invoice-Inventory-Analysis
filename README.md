@@ -6,7 +6,10 @@
 ![Scikit--Learn](https://img.shields.io/badge/Scikit--Learn-1.9-orange.svg)
 ![Plotly](https://img.shields.io/badge/Plotly-6.9-purple.svg)
 ![SQLite](https://img.shields.io/badge/SQLite-3.0-lightgrey.svg)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://vendor-invoice-inventory-analysis-6cos6dldecjn6arpcehzjd.streamlit.app/)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
+
+🌐 **Live Application Web Portal**: [vendor-invoice-inventory-analysis-6cos6dldecjn6arpcehzjd.streamlit.app](https://vendor-invoice-inventory-analysis-6cos6dldecjn6arpcehzjd.streamlit.app/)
 
 ---
 
@@ -144,7 +147,11 @@ Vendor-Invoice-Inventory-Analysis/
 - Python 3.9+ (Python 3.13 recommended)
 - Dependencies: `streamlit`, `pandas`, `numpy`, `scikit-learn`, `plotly`, `joblib`
 
-### 1. Clone the Repository
+### 🌐 Access Live Deployed App Online
+No local installation required! Access the live web application on Streamlit Community Cloud:  
+👉 **[https://vendor-invoice-inventory-analysis-6cos6dldecjn6arpcehzjd.streamlit.app/](https://vendor-invoice-inventory-analysis-6cos6dldecjn6arpcehzjd.streamlit.app/)**
+
+### 1. Clone the Repository (For Local Development)
 ```bash
 git clone https://github.com/proswarnali24/Vendor-Invoice-Inventory-Analysis.git
 cd Vendor-Invoice-Inventory-Analysis
